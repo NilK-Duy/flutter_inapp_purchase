@@ -78,10 +78,14 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                 safeChannel.success("Already started. Call endConnection method if you want to start over.")
                 return
             }
+
+            val pendingPurchasesParams = PendingPurchasesParams.newBuilder()
+                .enableOneTimeProducts()  // 启用一次性产品的pending purchases
+                .build()
             
             billingClient = BillingClient.newBuilder(context ?: return).apply {
                 setListener(purchasesUpdatedListener)
-                enablePendingPurchases()
+                enablePendingPurchases(pendingPurchasesParams)
             }.build()
             
             billingClient?.startConnection(object : BillingClientStateListener {
@@ -537,10 +541,8 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
                 if (offerToken == null) {
                     offerToken = selectedProductDetails.subscriptionOfferDetails!![0].offerToken
                 }
-            } else {
-                offerToken = selectedProductDetails.subscriptionOfferDetails!![0].offerToken
+                productDetailsParamsBuilder.setOfferToken(offerToken)
             }
-            productDetailsParamsBuilder.setOfferToken(offerToken)
 
             val productDetailsParamsList = listOf(productDetailsParamsBuilder.build())
 
@@ -565,7 +567,6 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             }
             if (activity != null) {
                 billingClient!!.launchBillingFlow(activity!!, builder.build())
-
             }
         } catch (e: Exception) {
             safeChannel.error(TAG, "buyItemByType", e.message)
