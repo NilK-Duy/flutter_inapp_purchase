@@ -80,12 +80,12 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             }
 
             val pendingPurchasesParams = PendingPurchasesParams.newBuilder()
-                .enableOneTimeProducts()  // 启用一次性产品的pending purchases
+                .enableOneTimeProducts()  // Enable pending purchases for one-time products
                 .build()
             
             billingClient = BillingClient.newBuilder(context ?: return).apply {
                 setListener(purchasesUpdatedListener)
-                enablePendingPurchases(pendingPurchasesParams)
+                 enablePendingPurchases(pendingPurchasesParams)
             }.build()
             
             billingClient?.startConnection(object : BillingClientStateListener {
@@ -532,17 +532,36 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             // Get the selected offerToken from the product, or first one if this is a migrated from 4.0 product
             // or if the offerTokenIndex was not provided
             val productDetailsParamsBuilder = ProductDetailsParams.newBuilder().setProductDetails(selectedProductDetails)
-            var offerToken : String? = null
 
             if (type == BillingClient.ProductType.SUBS) {
-                if (offerTokenIndex != null) {
-                    offerToken = selectedProductDetails.subscriptionOfferDetails?.get(offerTokenIndex)?.offerToken
+                // Subscription products require offerToken
+                var offerToken: String? = null
+                
+                // Check if subscription offers are available
+                if (selectedProductDetails.subscriptionOfferDetails == null || selectedProductDetails.subscriptionOfferDetails!!.isEmpty()) {
+                    safeChannel.error(TAG, "buyItemByType", "No subscription offers available for this product")
+                    return
                 }
+                
+                // Try to get the specified offerToken by index
+                if (offerTokenIndex != null && offerTokenIndex >= 0 && offerTokenIndex < selectedProductDetails.subscriptionOfferDetails!!.size) {
+                    offerToken = selectedProductDetails.subscriptionOfferDetails!![offerTokenIndex].offerToken
+                }
+                
+                // If no index specified or index is invalid, use the first available offerToken
                 if (offerToken == null) {
                     offerToken = selectedProductDetails.subscriptionOfferDetails!![0].offerToken
                 }
-                productDetailsParamsBuilder.setOfferToken(offerToken)
+                
+                // Ensure offerToken is not null (setOfferToken cannot accept null in Google Play Billing Library 7.1.1)
+                if (offerToken != null) {
+                    productDetailsParamsBuilder.setOfferToken(offerToken)
+                } else {
+                    safeChannel.error(TAG, "buyItemByType", "Invalid subscription offer token")
+                    return
+                }
             }
+            // One-time products don't need offerToken, use productDetails directly
 
             val productDetailsParamsList = listOf(productDetailsParamsBuilder.build())
 
@@ -568,7 +587,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             if (activity != null) {
                 billingClient!!.launchBillingFlow(activity!!, builder.build())
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             safeChannel.error(TAG, "buyItemByType", e.message)
             return
         }
